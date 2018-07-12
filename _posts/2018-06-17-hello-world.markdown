@@ -1,5 +1,5 @@
 ---
-layout: post
+layout: single
 title:  "Hello World!"
 date:   2018-06-17 15:52:50 -0500
 categories: jekyll update
