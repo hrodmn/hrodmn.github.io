@@ -21,16 +21,16 @@ plugins:
 minimal_mistakes_skin    : "dark" # "air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum", "sunrise"
 
 
-title: where forest meets code
+title: Henry Rodman
 description: >- # this means to ignore newlines until "baseurl:"
   
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "hrodmn.github.io"
 # Site Settings
 locale                   : "en-US"
-title                    : "Where Forest Meets Code"
+title                    : "Henry Rodman"
 title_separator          : "-"
-name                     : "Henry Rodman"
+name                     : #
 description              : >-
   My name is Henry Rodman and I am a biometrician at SilviaTerra. This is my
   platform for sharing my interests in statistics, forest management, forest
@@ -115,7 +115,7 @@ analytics:
 
 # Site Author
 author:
-  name             : "Henry Rodman"
+  name             :
   avatar           : # path of avatar image, e.g. "/assets/images/bio-photo.jpg"
   bio              : "I am a forester and a programmer"
   location         : "Duluth, MN"
@@ -140,7 +140,7 @@ author:
   stackoverflow    : # "123456/username" (the last part of your profile url, e.g. https://stackoverflow.com/users/123456/username)
   steam            : # "steamId" (the last part of your profile url, e.g. https://steamcommunity.com/id/steamId/)
   tumblr           :
-  twitter          :
+  twitter          : hrodmn
   vine             :
   weibo            :
   xing             :
