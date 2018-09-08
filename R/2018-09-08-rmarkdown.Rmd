@@ -10,6 +10,7 @@ output:
     variant: markdown_github
     fig_width: 6
     dev: "svg"
+    preserve_yaml: true
 ---
 
 ```{r setup, include=FALSE}
