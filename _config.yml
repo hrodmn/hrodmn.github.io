@@ -116,8 +116,8 @@ analytics:
 # Site Author
 author:
   name             :
-  avatar           : # path of avatar image, e.g. "/assets/images/bio-photo.jpg"
-  bio              : "I am a forester and a programmer"
+  avatar           : "/assets/images/jtree.jpg"
+  bio              : "forester/programmer"
   location         : "Duluth, MN"
   email            :
   uri              :
