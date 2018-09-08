@@ -28,7 +28,7 @@ baseurl: "" # the subpath of your site, e.g. /blog
 url: "hrodmn.github.io"
 # Site Settings
 locale                   : "en-US"
-title                    : "Henry Rodman"
+title                    : "The Code Forest"
 title_separator          : "-"
 name                     : #
 description              : >-
@@ -115,7 +115,7 @@ analytics:
 
 # Site Author
 author:
-  name             :
+  name             : "Henry Rodman"
   avatar           : "/assets/images/jtree.jpg"
   bio              : "forester/programmer"
   location         : "Duluth, MN"
