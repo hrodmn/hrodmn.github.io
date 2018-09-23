@@ -1,0 +1,132 @@
+---
+title: "Geospatial Analysis in R: getting started with sf"
+author: "Henry Rodman"
+categories: ["R"]
+tags: ["sf", "geospatial"]
+
+output:
+  md_document:
+    variant: markdown_github
+    fig_width: 7
+    preserve_yaml: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(base.dir = base.dir, base.url = base.url)
+knitr::opts_chunk$set(fig.path = fig.path)
+```
+
+The sf package is the successor to the common suite of geospatial analysis packages for R: sp, rgdal, and rgeos. This is a good thing because sf provides a unified solution to most of the geospatial manipulation and analysis operations that are often used within R. The way you interact with spatial data in the sf is more intuitive than in the past because the structure of the sf class in R is very simple relative to the sp class.
+
+An object of the sf class consists of a normal data.frame with a geometry column that contains the geometry for each feature. That may not sound very exciting, but it makes for a much easier time when manipulating and summarizing spatial data. If you are interested in the history and rationale for implementing the sf package, there are several enlightening blog posts and vignettes on the sf [github page](https://github.com/r-spatial/sf#blogs-presentations-vignettes-sp-sf-wiki).
+
+
+### Installation
+Installing sf can be troublesome at first due to system dependencies, but there are some steps outlined on the package [readme](https://github.com/r-spatial/sf#installing) that seem to work.
+
+```{r libraries}
+library(tidyverse)
+library(sf)
+library(spData)
+```
+
+### Download some data
+The ecological supersections make a cool spatial dataset that describe large ecological provinces across the continental US.
+
+```{r downloadFiles}
+# import supersection shapefile
+if(!file.exists("/tmp/gis-supersection-shape-file.zip")) {
+  download.file(url = "https://www.arb.ca.gov/cc/capandtrade/protocols/usforest/2014/supersectionshapefiles/gis-supersection-shape-file.zip",
+                destfile = "/tmp/gis-supersection-shape-file.zip")
+  
+}
+
+unzip(zipfile = "/tmp/gis-supersection-shape-file.zip", exdir = "/tmp/super")
+superFile <- "/tmp/super/Supersections/Supersections.shp"
+
+```
+
+### Reading in spatial data
+ The shapefile can be read in using the function `st_read` and projected to EPSG:4326 using the function `st_transform`. Notice that you can use pipes and the tidyverse framework on objects of the `sf` class! `st_read` can also handle alternative file formats such as geojson and GeoPackage (.gpkg).
+
+```{r reading}
+supersectionShape <- st_read(dsn = superFile) %>%
+  st_simplify(dTolerance = 2000) %>%
+  st_transform(crs = 4326)
+
+```
+
+### Data structure
+To understand why sf makes the world a better place, take a look at the class of `supersectionShape`. It's an object of class `sf` and `data.frame`!
+```{r class}
+class(supersectionShape)
+```
+
+The `data.frame` structure of an sf object is also very convenient.
+```{r structure}
+head(supersectionShape)
+
+```
+
+### Plotting
+sf objects can be plotted using base R plotting methods, but the `ggplot` method creates really nice looking maps with a familiar interface to many users.
+
+```{r ggplotting, fig.cap="Map of ecological supersections in continental US"}
+ggplot() +
+  geom_sf(data = supersectionShape,
+          size = 0.5,
+          color = "black",
+          alpha = 0) +
+  theme_bw() +
+  coord_sf() +
+  labs(title = "Ecological Supersections",
+       subtitle = "Map of the ecological supersections in the continental US",
+       caption = "Source: CA ARB")
+```
+
+### Geospatial joins
+Spatial joins operations (e.g. clip, overlay, etc) are very easy to perform in the sf framework. If two vector layers share the same projection, the function `st_join` can be used very effectively.
+
+Let's look at the relationships between ecological supersections and the US states. First, we need to make sure that the `us_states` sf object shares the projection EPSG:4326. We use the function `st_crs` for that.
+
+```{r checkCRS}
+st_crs(us_states)
+st_crs(supersectionShape)
+
+st_crs(us_states) == st_crs(supersectionShape)
+```
+
+It does not share the same projection, so we are going to need to reproject before we perform any spatial joins.
+
+If we want to know which supersections are present in the state of Minnesota, we can perform a spatial join to answer that question. The type of join performed by `st_join` defaults to "intersect" (`st_intersect`), but can be set to one of these instead: `st_disjoint`, `st_touches`, `st_crosses`, `st_within`, `st_contains`, `st_overlaps`, `st_covers`, `st_covered_by`, `st_equals`, or `st_equals_exact`.
+
+```{r join}
+mnSupersections <- supersectionShape %>%
+  st_join(st_transform(us_states, crs = 4326),
+          join = st_intersects) %>%
+  filter(NAME == "Minnesota")
+  
+mn <- us_states %>%
+  filter(NAME == "Minnesota")
+```
+
+```{r mnPlots}
+ggplot() +
+  geom_sf(data = mn,
+          size = 0.5,
+          fill = "blue",
+          alpha = 0.2) +
+  geom_sf(data = mnSupersections,
+          size = 0.5,
+          color = "black",
+          alpha = 0) +
+  theme_bw() +
+  coord_sf() +
+  labs(title = "Ecological Supersections in MN",
+       subtitle = "Map of the ecological supersections in Minnesota",
+       caption = "Source: CA ARB")
+
+```
+
+### Interactions with rasters
+Operations between rasters and `sf` objects are the same as before: load the raster using the raster package, summarize/extract raster data to vector layer using the `over` function. Look for an update to this post once I see if there is a tidy way to summarize rasters within the piping framework!

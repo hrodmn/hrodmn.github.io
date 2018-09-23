@@ -18,7 +18,7 @@ remote_theme: "mmistakes/minimal-mistakes"
 plugins:
   - jekyll-feed
 
-minimal_mistakes_skin    : "dark" # "air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum", "sunrise"
+minimal_mistakes_skin    : "air" # "air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum", "sunrise"
 
 
 title: Henry Rodman
@@ -28,7 +28,7 @@ baseurl: "" # the subpath of your site, e.g. /blog
 url: "hrodmn.github.io"
 # Site Settings
 locale                   : "en-US"
-title                    : "The Code Forest"
+title                    : #"The Code Forest"
 title_separator          : "-"
 name                     : #
 description              : >-
