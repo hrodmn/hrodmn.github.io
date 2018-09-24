@@ -173,7 +173,7 @@ janPlot <- ggplot() +
           color = "black",
           alpha = 1) +
   scale_fill_gradient2(high = "red", low = "blue",
-                       name = "Mean Jan. Temp (C)") +
+                       name = "Mean Temp (C)") +
   theme_bw() +
   coord_sf() +
   labs(title = "Temperature across Ecological Supersections",

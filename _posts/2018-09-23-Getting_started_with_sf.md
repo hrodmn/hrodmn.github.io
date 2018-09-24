@@ -213,19 +213,15 @@ janTemp <- raster::extract(janTemp,
                            na.rm = TRUE)
 
 supersectionShape2$janTemp <- janTemp
-```
 
-Mapping mean temp in January confirms what we already knew: Minnesota is cold!
-
-``` r
-ggplot() +
+janPlot <- ggplot() +
   geom_sf(data = supersectionShape2,
           aes(fill = janTemp),
           size = 0.5,
           color = "black",
           alpha = 1) +
   scale_fill_gradient2(high = "red", low = "blue",
-                       name = "Mean Jan. Temp (C)") +
+                       name = "Mean Temp (C)") +
   theme_bw() +
   coord_sf() +
   labs(title = "Temperature across Ecological Supersections",
@@ -233,4 +229,4 @@ ggplot() +
        caption = "Source: CA ARB, WorldClim 2.0")
 ```
 
-![](/assets/images/2018-09-23-Getting_started_with_sf_meanJanTemp-1.png)
+Mapping mean temp in January confirms what we already knew: Minnesota is cold!
