@@ -1,5 +1,5 @@
 ---
-title: "Geospatial Analysis in R: getting started with sf"
+title: "Geospatial Analysis in R: getting started with the sf package"
 author: "Henry Rodman"
 categories: ["R"]
 tags: ["sf", "geospatial"]
@@ -16,13 +16,18 @@ knitr::opts_knit$set(base.dir = base.dir, base.url = base.url)
 knitr::opts_chunk$set(fig.path = fig.path)
 ```
 
-The sf package is the successor to the common suite of geospatial analysis packages for R: sp, rgdal, and rgeos. This is a good thing because sf provides a unified solution to most of the geospatial manipulation and analysis operations that are often used within R. The way you interact with spatial data in the sf is more intuitive than in the past because the structure of the sf class in R is very simple relative to the sp class.
+The **sf** package is the successor to the common suite of geospatial analysis packages for R: sp, rgdal, and rgeos. This is a good thing because sf provides a unified solution to most of the geospatial operations that are often used within R.
 
-An object of the sf class consists of a normal data.frame with a geometry column that contains the geometry for each feature. That may not sound very exciting, but it makes for a much easier time when manipulating and summarizing spatial data. If you are interested in the history and rationale for implementing the sf package, there are several enlightening blog posts and vignettes on the sf [github page](https://github.com/r-spatial/sf#blogs-presentations-vignettes-sp-sf-wiki).
+The way you interact with spatial data in the sf universe is more intuitive than in the past because the structure of the sf class in R is very simple relative to the sp class. An object of the sf class consists of a normal data.frame with a geometry column that contains the geometry for each feature. That may not sound very exciting, but it makes for a much easier time when manipulating and summarizing spatial data.
+
+If you are interested in the history and rationale for implementing the sf package, there are several enlightening blog posts and vignettes on the sf [github page](https://github.com/r-spatial/sf#blogs-presentations-vignettes-sp-sf-wiki). I also this [guide](https://geocompr.robinlovelace.net/) very helpful for understanding the sf workflow.
 
 
 ### Installation
-Installing sf can be troublesome at first due to system dependencies, but there are some steps outlined on the package [readme](https://github.com/r-spatial/sf#installing) that seem to work.
+Installing sf can be difficult while you align the system dependencies, but there are some steps outlined on the package [readme](https://github.com/r-spatial/sf#installing) that seem to work. The main system packages are GDAL, GEOS, PROJ. If your machine is already set up with geospatial software (e.g. QGIS) you probably have these installed already. For best results follow the installation instructions on github.
+
+### Fire it up
+For this demo I am loading the tidyverse package which attaches my preferred set of data manipulation and visualization packages. I am also attaching the package 'spData' which contains some useful spatial datasets for demonstration.
 
 ```{r libraries}
 library(tidyverse)
@@ -128,5 +133,55 @@ ggplot() +
 
 ```
 
-### Interactions with rasters
-Operations between rasters and `sf` objects are the same as before: load the raster using the raster package, summarize/extract raster data to vector layer using the `over` function. Look for an update to this post once I see if there is a tidy way to summarize rasters within the piping framework!
+### Bonus: working with rasters
+Operations between rasters and `sf` objects are the same as before: load the raster using the raster package, summarize/extract raster data to vector layer using the `extract` function. Look for an update to this post once I see if there is a tidy way to summarize rasters within the piping framework!
+
+```{r obtainRasters}
+# download low resolution climate rasters
+if(!file.exists("/tmp/climate-rasts.zip")) {
+  download.file(url = "http://biogeo.ucdavis.edu/data/worldclim/v2.0/tif/base/wc2.0_10m_tavg.zip",
+                destfile = "/tmp/climate-rasts.zip")
+  
+}
+
+unzip(zipfile = "/tmp/climate-rasts.zip", exdir = "/tmp/climate-rasts")
+rasts <- list.files("/tmp/climate-rasts", full.names = TRUE)
+
+```
+
+The climate rasters downloaded in the previous step represent the mean temperature by month at ~340 km2 resolution. For a real analysis, we would want the weighted mean temperature for each polygon (weighted on proportion of each raster cell falling within each polygon), but that takes a lot longer so we will just get the mean of intersecting cells.
+
+```{r extract}
+janTemp <- raster::raster(rasts[grepl("tavg_01.tif", rasts)])
+
+# reproject supersection shape to match raster
+supersectionShape2 <- st_transform(supersectionShape,
+                                   crs = raster::projection(janTemp))
+
+# extract mean temp (C) for month of January for each polygon
+janTemp <- raster::extract(janTemp,
+                           as(supersectionShape2, "Spatial"),
+                           fun = mean, weights = FALSE,
+                           na.rm = TRUE)
+
+supersectionShape2$janTemp <- janTemp
+```
+
+Mapping mean temp in January confirms what we already knew: Minnesota is cold!
+
+```{r meanJanTemp}
+ggplot() +
+  geom_sf(data = supersectionShape2,
+          aes(fill = janTemp),
+          size = 0.5,
+          color = "black",
+          alpha = 1) +
+  scale_fill_gradient2(high = "red", low = "blue",
+                       name = "Mean Jan. Temp (C)") +
+  theme_bw() +
+  coord_sf() +
+  labs(title = "Temperature across Ecological Supersections",
+       subtitle = "Mean January temperature (C) by ecological supersection",
+       caption = "Source: CA ARB, WorldClim 2.0")
+
+```
