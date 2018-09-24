@@ -230,3 +230,5 @@ janPlot <- ggplot() +
 ```
 
 Mapping mean temp in January confirms what we already knew: Minnesota is cold!
+
+![](/assets/images/2018-09-23-Getting_started_with_sf_meanJanTemp-1.png)
