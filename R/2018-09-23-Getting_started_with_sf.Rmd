@@ -20,7 +20,7 @@ The **sf** package is the successor to the common suite of geospatial analysis p
 
 The way you interact with spatial data in the sf universe is more intuitive than in the past because the structure of the sf class in R is very simple relative to the sp class. An object of the sf class consists of a normal data.frame with a geometry column that contains the geometry for each feature. That may not sound very exciting, but it makes for a much easier time when manipulating and summarizing spatial data.
 
-If you are interested in the history and rationale for implementing the sf package, there are several enlightening blog posts and vignettes on the sf [github page](https://github.com/r-spatial/sf#blogs-presentations-vignettes-sp-sf-wiki). I also this [guide](https://geocompr.robinlovelace.net/) very helpful for understanding the sf workflow.
+If you are interested in the history and rationale for implementing the sf package, there are several enlightening blog posts and vignettes on the sf [github page](https://github.com/r-spatial/sf#blogs-presentations-vignettes-sp-sf-wiki). I also found this [guide](https://geocompr.robinlovelace.net/) very helpful for understanding the sf workflow.
 
 
 ### Installation
