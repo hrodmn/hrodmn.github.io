@@ -133,6 +133,24 @@ ggplot() +
 
 ```
 
+### Dissolving
+`sf` objects can be dissolved by common attributes if desired, or dissolved completely using the `group_by` and `summarize` logic from dplyr.
+
+```{r dissolve}
+regions <- us_states %>%
+  group_by(REGION) %>%
+  summarize()
+
+ggplot() +
+  geom_sf(data = regions,
+          aes(fill = REGION),
+          size = 0.5,
+          color = "black",
+          alpha = 1) +
+  theme_bw() +
+  coord_sf()
+```
+
 ### Bonus: working with rasters
 Operations between rasters and `sf` objects are the same as before: load the raster using the raster package, summarize/extract raster data to vector layer using the `extract` function. Look for an update to this post once I see if there is a tidy way to summarize rasters within the piping framework!
 
