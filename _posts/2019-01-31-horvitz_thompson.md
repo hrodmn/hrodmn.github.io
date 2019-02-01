@@ -14,16 +14,14 @@ output:
 Introduction
 ------------
 
-Though you may not notice it, forest management is a part of your life. The air we breath, water we drink, and our homes are all in some way composed of forest resources. To secure an adequate and sustainable supply of these resources, we manage forests. Humans have been managing forests with varying degrees of success throughout our entire history and the science of forestry has been developed to help us manage forests better than those who came before us. The application of statistical survey sampling techniques to the assessment of forest resources (aka forest inventory) has been elemental to improvements in forest management practices across the globe. In any context, bad management decisions are often a product of bad information or poorly calibrated expectations for the future. The same is true in forestry and is the reason why forest inventory is so important. Efficient and unbiased sampling techniques have long been a focus in statistics, and forest managers use these methods every day to obtain the information required to make intelligent management decisions. This post is meant to outline the application of two-stage sampling to forest inventory, which is one of the most commonly applied statistical methods in resource assessment.
+Though you may not notice it, forest management is a part of your life. The air we breath, water we drink, and our homes are all in some way composed of forest resources. To secure an adequate and sustainable supply of these resources, we manage forests. Humans have been managing forests with varying degrees of success throughout our entire history and the science of forestry has been developed to help us manage forests better than those who came before us. The application of statistical survey sampling techniques to the assessment of forest resources (aka forest inventory) has been elemental to improvements in forest management practices across the globe.
+
+In any context, bad management decisions are often a product of bad information or poorly calibrated expectations for the future. The same is true in forestry and is the reason why forest inventory is so important. Efficient and unbiased sampling techniques have long been a focus in statistics, and forest managers use these methods every day to obtain the information required to make intelligent management decisions. This post is meant to outline the application of two-stage sampling to forest inventory.
 
 Objectives
 ----------
 
-I am a forest manager that needs an estimate of the volume of standing trees in a tract of forest land. I want to obtain an accurate estimate for the lowest price possible. I am willing to pay more for a more precise estimate, but do not need an estimate that is more precise than +/- 10% at 90% confidence. In statistical terms, I would like the half-width of the 90% confidence inveral to be roughly 10% of the estimate of the total volume.
-
-``` r
-library(tidyverse)
-```
+Let's say that I am a forest manager that needs an estimate of the volume of standing trees in a tract of forest land. I want to obtain an accurate estimate for the lowest price possible. I am willing to pay more for a more precise estimate, but do not need an estimate that is more precise than +/- 10% at 90% confidence. In statistical terms, I would like the half-width of the 90% confidence interval to be roughly 10% of the estimate of the total volume.
 
 Simulate the population
 -----------------------
@@ -34,23 +32,25 @@ The forest is composed of 100 stands of forest that vary in size, most of the st
 # simulate a population of stands
 stands <- tibble(id = 1:100) %>%
   mutate(
-    acres = runif(n = 100, min = 10, max = 200),
+    acres = truncnorm::rtruncnorm(
+      n = 100, a = 1, b = 400,
+      mean = 80, sd = 30
+    ),
     age = runif(n = 100, min = 10, max = 150),
-    cv = runif(n = 100, min = 10, max = 70)
+    cv = runif(n = 100, min = 10, max = 100)
   ) %>%
   mutate(
     cuftPerAc = 3000 * 1 / (1 + exp(-(age - 40) / 15)) +
-      rnorm(n = 100, mean = 0, sd = 400)
-  ) %>%
-  mutate(
+      rnorm(n = 100, mean = 0, sd = 400),
     cuftPerAc = case_when(
       cuftPerAc < 0 ~ 0,
       cuftPerAc > 0 ~ cuftPerAc
-    )
+    ),
+    cuftTot = cuftPerAc * acres
   )
 
 totalAcres <- sum(stands$acres)
-totalCuft <- sum(stands$cuftPerAc * stands$acres)
+totalCuft <- sum(stands$cuftTot)
 
 meanCuft <- totalCuft / totalAcres
 
@@ -59,43 +59,110 @@ truth <- tibble(
   totalCuft = totalCuft,
   meanCuft = meanCuft
 )
+
+stands %>%
+  ggplot(aes(x = age, y = cuftPerAc)) +
+  geom_point() +
+  ylab(bquote("volume (" ~ ft^{3} ~ "/ac)")) +
+  labs(caption = "volume over age for the forest")
 ```
 
-The true population mean stocking is 2182 cubic feet per acre, the population total is 2.339133710^{7} cubic feet!
+![](/assets/images/2019-01-31-horvitz_thompson_data-1.png) The true population mean stocking is 2403 cubic feet per acre, the population total is 1.849318610^{7} cubic feet!
 
 Designing a sample
 ------------------
 
 There are many ways to obtain an estimate of the total volume for the forest. The most expensive way would be to visit every tree in the forest, measuring several dimensions and estimating volume for every single tree. This would provide us with an accurate and precise estimate but would be time consuming and prohibitively expensive. We could also just guess the total based on what we know about the property. This would be very cheap today, but our estimate is likely to be inaccurate and will probably result in significant costs related to bad information down the road. Our best bet is to take a sample from the population. A simple random sample of 1/15 acre circular plots distributed across the property would be a fine way to sample the property, but we also want information about individual stands for planning purposes so we should do something else.
 
-A double sample is an appealing option because we can obtain an accurate estimate of the population total while simultaneously obtaining useful stand-level estimates. We can also be more efficient in our sampling efforts by controlling the total number of stands that we must visit.
+A double sample is an appealing option because we can obtain an accurate estimate of the population total while obtaining stand-level estimates that we will use for modeling forest growth and evaluating forest management options. We can also be more efficient in our sampling efforts by controlling the total number of stands that we must visit.
 
-### Select stands
+### Selecting stands
 
-The population of stands can be sampled randomly, but since we are trying to obtain an estimate of total volume for the property, we need to make sure that we sample the stands that a) contribute the most to the total volume, and b) contribute the most variance to the population. We can sample the stands however we want so long as we know the probability of each stand being included in the sample! In this case, we are going to weight our sample on age x acres since we believe the oldest stands are going to have the greatest stocking, and that the largest stands have the greatest total volume. We have decided that we are going to sample 20 stands and install either one plot per 7 acres or 30 plots per stand, whichever is fewer.
+The population of stands could be sampled randomly, but since we are trying to obtain an estimate of total volume for the property, we need to make sure that we sample the stands that a) contribute the most to the total volume, and b) contribute the most variance to the population. Using the Horvitz-Thompson estimators, we can sample the stands however we want so long as we know the probability of each stand being included in the sample! This is a case of *unequal probability sampling* and the Horvitz-Thompson estimators will be statistically efficient if the probability of inclusion for each primary sampling unit is correlated with the variable of interest. In this case, we are going to weight our sample on age x acres since we believe the oldest stands are going to have the greatest stocking, and that the largest stands have the greatest total volume.
+
+#### Inclusion probability
+
+Some texts will approximate *π*<sub>*i*</sub> like this:
+*π*<sub>*i*</sub> = *n* \* *p*<sub>*i*</sub>
+ where *p*<sub>*i*</sub> is the sampling weight for the *i*<sup>*t**h*</sup> primary sample unit. This works fine when sampling with replacement, but sampling without replacement is slightly more complicated. The probability of including the *i*<sup>*t**h*</sup> element on the *k*<sup>*t**h*</sup> draw depends on the elements that were drawn in all draws 1 : *k*. The distinction between *p*<sub>*i*</sub> and *π*<sub>*i*</sub> is very important. Think of *π*<sub>*i*</sub> as the likelihood of including the *i*<sup>*t**h*</sup> element unconditional on the other elements selected in the sample. This can be calculated by computing the proportion of all possible samples where an element is selected but that sounds very difficult. Instead we will use the power of simulation to obtain an approximation of *π*<sub>*i*</sub> for each stand.
 
 ``` r
-nSamp <- 20
+simulate_sample <- function(sims, stands, nSamp) {
+  bind_rows(
+    lapply(1:sims,
+      function(i, ...) {
+        stands %>%
+          mutate(prop = age * acres / sum(age * acres)) %>%
+          sample_n(nSamp, weight = prop) %>%
+          mutate(try = i)
+      }
+    )) %>%
+    group_by(id) %>%
+    summarize(pi_i_sim = n() / sims) %>%
+    left_join(stands, by = "id") %>%
+    mutate(
+      prop = age * acres / sum(age * acres),
+      pi_i_approx = nSamp * prop
+    ) %>%
+    select(id, pi_i_sim, pi_i_approx, prop)
+}
 
-sampStands <- stands %>%
-  mutate(prop = sqrt(age * acres) / sum(sqrt(age * acres))) %>%
-  sample_n(nSamp, weight = prop) %>%
-  group_by(id) %>%
-  mutate(nPlots = min(ceiling(acres / 7), 30)) %>%
-  mutate(pi_i = nSamp * prop)
+sampleSim20 <- simulate_sample(
+  sims = 1000,
+  stands = stands,
+  nSamp = 20
+)
+
+sampleSim20 %>%
+  ggplot(aes(x = pi_i_approx, y = pi_i_sim)) +
+  geom_point() +
+  geom_abline() +
+  theme_bw() +
+  xlab(bquote("approximate" ~ pi[i])) +
+  ylab(bquote("simulated" ~ pi[i]))
 ```
 
-### Select plots
+![](/assets/images/2019-01-31-horvitz_thompson_sampleSimulation-1.png)
 
-In each sample stand we are installing a systematic random sample of 1/15 acre circular plots. On each plot we are estimating the cubic foot volume of the living trees.
+As you can see, there are subtle differences between the approximate *p**i*<sub>*i*</sub> values and the *p**i*<sub>*i*</sub> values generated from 10,000 simulated samples. We will use the simulated values for the rest of the analysis.
+
+For this sample we are going to weight our sample on `age * acres` since we believe the oldest stands are going to have the greatest stocking, and that the largest stands have the greatest total volume. We have decided that we are going to sample 20 stands and install either one plot per 8 acres or 30 plots per stand, whichever is fewer.
 
 ``` r
-# stage 2: generate a sample of plots for each stand
+acresPerPlot <- 8
+
+sampStands <- stands %>%
+  mutate(prop = age * acres / sum(age * acres)) %>%
+  sample_n(size = 20, weight = prop) %>%
+  group_by(id) %>%
+  mutate(nPlots = max(2, min(ceiling(acres / acresPerPlot), 30))) %>%
+  left_join(sampleSim20 %>% select(id, pi_i = pi_i_sim), by = "id")
+  
+stands %>%
+  mutate(
+    sampled = case_when(
+      id %in% sampStands$id ~ "yes",
+      ! id %in% sampStands$id ~ "no"
+    )
+  ) %>%
+  ggplot(aes(x = acres, y = cuftPerAc, color = sampled)) +
+  geom_point()
+```
+
+![](/assets/images/2019-01-31-horvitz_thompson_sampleStands-1.png)
+
+### Measure plots
+
+In each sample stand we are installing a systematic random sample of 1/15 acre circular plots. On each plot we are estimating the cubic foot volume of the living trees. This is the second stage of our two-stage sample. We are simulating plots using a truncated normal distribution based on the true mean and coefficient of variation of each stand. We are using a truncated normal distribution with a lower limit of 0 since it is not possible to observe negative volume!
+
+``` r
 plotTab <- sampStands %>%
   group_by(id) %>%
   mutate(
     cuftObs = list(
-      rnorm(
+      truncnorm::rtruncnorm(
+        a = 0,
+        b = Inf,
         n = nPlots,
         mean = cuftPerAc,
         sd = (cv / 100) * cuftPerAc
@@ -104,7 +171,6 @@ plotTab <- sampStands %>%
   ) %>%
   select(id, cuftObs) %>%
   unnest() %>%
-  mutate(cuftObs = ifelse(cuftObs < 0, 0, cuftObs)) %>%
   ungroup()
 ```
 
@@ -134,11 +200,30 @@ standDat <- plotTab %>%
 
 We can now combine the estimates from the primary sampling units to obtain an estimate of the population. To do this we will use the inclusion and selection probabilities to weight each sampled stand's contribution to the population total.
 
+#### Equations
+
+The Horvitz-Thompson estimator for the population total is:
+$$
+\\hat{t}\_{HT} = \\sum\_{i \\in S} \\displaystyle \\frac{\\hat{t}\_{i}}{\\pi\_{i}}
+$$
+ where *S* is the sample of primary sample units from population sized *N*
+
+The estimator for variance of the population total is:
+$$
+\\hat{V}(\\hat{t}\_{HT}) = \\sum\_{i \\in S} (1 - \\pi\_{i}) \\displaystyle \\frac{\\hat{t\_{i}}^{2}}{\\pi\_{i}^{2}}+
+\\sum\_{i \\in S} \\sum\_{\\substack{k \\in S \\\\ k \\neq i}} \\displaystyle \\frac{\\pi\_{ik} - \\pi\_{i}\\pi\_{k}}{\\pi\_{ik}}
+\\displaystyle \\frac{\\hat{t}\_{i}}{\\pi\_{i}} \\frac{\\hat{t}\_{k}}{\\pi\_{k}} +
+\\sum\_{i \\in S} \\displaystyle \\frac{\\hat{V}(\\hat{t\_{i}})}{\\pi\_{i}}
+$$
+
+where *π*<sub>*i**k*</sub> is the joint inclusion probability for primary sampling units *i* and *k*. *π*<sub>*i**k*</sub> is approximated using this equation:
+*π*<sub>*i*</sub> + *π*<sub>*k*</sub> − (1 − (1 − *p*<sub>*i*</sub> − *p*<sub>*k*</sub>)<sup>*n*</sup>)
+
+We will extend the estimate of population variance ($\\hat{V}(\\hat{t}\_{HT})$) to obtain a standard error and 90% confidence interval for the population.
+
+There is one component of the variance calculation where each observation must be compared to the rest of the observations in the sample. There may be a more elegant way to code that part, but for now this is what I have come up with:
+
 ``` r
-# this is the component of the Horvitz-Thompson variance estimator that
-# requires the joint probability of inclusion of each cluster:
-# pi_i = probability of inclusion = n * p
-# p = selection probability (stand acres / total acres)
 sub_var <- function(row, data, y, pi_i, p) {
   a <- data[row, ]
   b <- data[-row, ]
@@ -149,14 +234,18 @@ sub_var <- function(row, data, y, pi_i, p) {
     c <- b[l, ]
 
     jointProb <- a[[pi_i]] + c[[pi_i]] - (1 - (1 - a[[p]] - c[[p]])^n)
-
-    x[[l]] <- (jointProb - a[[pi_i]] * c[[pi_i]]) / (a[[pi_i]] * c[[pi_i]]) *
-      (a[[y]] * c[[y]] / jointProb)
+    
+    x[[l]] <- ((jointProb - a[[pi_i]] * c[[pi_i]]) / jointProb) *
+      (a[[y]] / a[[pi_i]] * c[[pi_i]])
   }
 
   sum(unlist(x))
 }
+```
 
+Using the equations listed above we will compute estimates of the population total and variance of the total, then convert those into estimates of cubic foot volume on a per-acre basis.
+
+``` r
 sampleSummary <- standDat %>%
   left_join(sampStands %>% select(id, pi_i, prop), by = "id") %>%
   ungroup() %>%
@@ -191,129 +280,145 @@ sampleSummary <- standDat %>%
     source, totalCuft, seTot, ci90Tot,
     meanCuft, seMeanCuft, ci90MeanCuft, nObs
   )
-  
-results <- bind_rows(sampleSummary, truth)
 
+results <- bind_rows(sampleSummary, truth)
+```
+
+#### Results
+
+Since we know the true population mean, we are able to compare the estimate from our sample of 20 stands to the truth!
+
+``` r
 results %>%
-  ggplot(aes(x = source, y = meanCuft, color = source)) +
+  ggplot(aes(x = source, y = meanCuft)) +
   geom_point() +
   geom_errorbar(
     aes(ymax = meanCuft + ci90MeanCuft, ymin = meanCuft - ci90MeanCuft)
   ) +
   ylim(0, max(standDat$meanObs)) +
-  theme_bw()
+  ylab(bquote("volume (" ~ ft^{3} ~ "/ac)"))
 ## Warning: Removed 1 rows containing missing values (geom_errorbar).
 ```
 
-![](/assets/images/2019-01-31-horvitz_thompson_populationStats-1.png)
+![](/assets/images/2019-01-31-horvitz_thompson_sampleEstimates-1.png)
 
 ``` r
-simulate_HT <- function(i, stands, nStands, acresPerPlot) {
-  sampStands <- stands %>%
-    mutate(
-      prop = sqrt(age * acres) / sum(sqrt(age * acres)),
-      pi_i = nStands * prop
-    ) %>%
-    sample_n(nStands, weight = prop) %>%
-    mutate(nPlots = ceiling(acres / acresPerPlot))
 
-  # stage 2: generate a sample of plots for each stand
-  plotTab <- sampStands %>%
-    group_by(id) %>%
-    mutate(
-      cuftObs = list(
-        rnorm(
-          n = nPlots,
-          mean = cuftPerAc,
-          sd = (cv / 100) * cuftPerAc
-        )
-      )
-    ) %>%
-    select(id, cuftObs) %>%
-    unnest() %>%
-    mutate(cuftObs = ifelse(cuftObs < 0, 0, cuftObs)) %>%
-    ungroup()
+simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
+  
+  sampleSim <- simulate_sample(
+    sims = 10000,
+    stands = stands,
+    nSamp = nStands
+  )
+  
+  out <- bind_rows(
+    lapply(
+      1:sims,
+      function(...) {
+        sampStands <- stands %>%
+          mutate(
+            prop = age * acres / sum(age * acres)
+          ) %>%
+          sample_n(nStands, weight = prop) %>%
+          left_join(sampleSim %>% select(id, pi_i = pi_i_sim), by = "id") %>%
+          mutate(nPlots = ceiling(acres / acresPerPlot))
 
-  standDat <- plotTab %>%
-    left_join(sampStands %>% select(id, acres), by = "id") %>%
-    group_by(id, acres) %>%
-    summarize(
-      meanObs = mean(cuftObs),
-      tHat = mean(cuftObs * acres),
-      varTHat = var(cuftObs * acres),
-      sdObs = sd(cuftObs),
-      nPlots = n()
+        # stage 2: generate a sample of plots for each stand
+        plotTab <- sampStands %>%
+          group_by(id) %>%
+          mutate(
+            cuftObs = list(
+              rnorm(
+                n = nPlots,
+                mean = cuftPerAc,
+                sd = (cv / 100) * cuftPerAc
+              )
+            )
+          ) %>%
+          select(id, cuftObs) %>%
+          unnest() %>%
+          mutate(cuftObs = ifelse(cuftObs < 0, 0, cuftObs)) %>%
+          ungroup()
+
+        standDat <- plotTab %>%
+          left_join(sampStands %>% select(id, acres), by = "id") %>%
+          group_by(id, acres) %>%
+          summarize(
+            meanObs = mean(cuftObs),
+            tHat = mean(cuftObs * acres),
+            varTHat = var(cuftObs * acres),
+            sdObs = sd(cuftObs),
+            nPlots = n()
+          )
+
+        sampleSummary <- standDat %>%
+          left_join(sampStands %>% select(id, pi_i, prop), by = "id") %>%
+          ungroup() %>%
+          mutate(
+            subVar = unlist(
+              lapply(
+                1:nrow(.),
+                sub_var,
+                data = .,
+                y = "tHat",
+                pi_i = "pi_i",
+                p = "prop"
+              )
+            )
+          ) %>%
+          ungroup() %>%
+          summarize(
+            totalCuft = sum(tHat / pi_i),
+            varTot = sum(((1 - pi_i) / pi_i^2) * tHat^2) +
+              sum(subVar) + sum(varTHat / pi_i),
+            nObs = n()
+          ) %>%
+          mutate(
+            seTot = sqrt(varTot / nObs),
+            ci90Tot = 1.96 * seTot,
+            meanCuft = totalCuft / totalAcres,
+            seMeanCuft = seTot / totalAcres,
+            ci90MeanCuft = ci90Tot / totalAcres,
+            source = "estimate"
+          ) %>%
+          select(
+            source, totalCuft, seTot, ci90Tot,
+            meanCuft, seMeanCuft, ci90MeanCuft, nObs
+          )
+      }
     )
-
-  # ggplot(data = standDat, aes(x = cuftPerAc, y = meanObs)) +
-  #   geom_point() +
-  #   theme_bw() +
-  #   geom_abline()
-  sampleSummary <- standDat %>%
-    left_join(sampStands %>% select(id, pi_i, prop), by = "id") %>%
-    ungroup() %>%
-    mutate(
-      subVar = unlist(
-        lapply(
-          1:nrow(.),
-          sub_var,
-          data = .,
-          y = "tHat",
-          pi_i = "pi_i",
-          p = "prop"
-        )
-      )
-    ) %>%
-    ungroup() %>%
-    summarize(
-      totalCuft = sum(tHat / pi_i),
-      varTot = sum(((1 - pi_i) / pi_i^2) * tHat^2) +
-        sum(subVar) + sum(varTHat / pi_i),
-      nObs = n()
-    ) %>%
-    mutate(
-      seTot = sqrt(varTot / nObs),
-      ci90Tot = qt(1 - 0.1 / 2, df = nObs - 1) * seTot,
-      meanCuft = totalCuft / totalAcres,
-      seMeanCuft = seTot / totalAcres,
-      ci90MeanCuft = ci90Tot / totalAcres,
-      source = "estimate"
-    ) %>%
-    select(
-      source, totalCuft, seTot, ci90Tot,
-      meanCuft, seMeanCuft, ci90MeanCuft, nObs
-    )
-
-  sampleSummary
+  )
+  
+  out
 }
 
-sim10 <- bind_rows(
-  lapply(
-    1:100, simulate_HT,
-    stands = stands,
-    nStands = 10, acresPerPlot = 10
-  )
+sim10 <- simulate_HT(
+  sims = 100,
+  stands = stands,
+  nStands = 10,
+  acresPerPlot = acresPerPlot
 )
-sim20 <- bind_rows(
-  lapply(
-    1:100, simulate_HT,
-    stands = stands,
-    nStands = 20, acresPerPlot = 10
-  )
+
+sim20 <- simulate_HT(
+  sims = 100,
+  stands = stands,
+  nStands = 20,
+  acresPerPlot = acresPerPlot
 )
-sim30 <- bind_rows(
-  lapply(
-    1:100, simulate_HT,
-    stands = stands,
-    nStands = 30, acresPerPlot = 10
-  )
+
+sim30 <- simulate_HT(
+  sims = 100,
+  stands = stands,
+  nStands = 30,
+  acresPerPlot = acresPerPlot
 )
-sim40 <- bind_rows(
-  lapply(
-    1:100, simulate_HT,
-    stands = stands,
-    nStands = 40, acresPerPlot = 10
-  )
+
+sim40 <- simulate_HT(
+  sims = 100,
+  stands = stands,
+  nStands = 40,
+  acresPerPlot = acresPerPlot
 )
 
 simFrame <- bind_rows(sim10, sim20, sim30, sim40)
@@ -326,12 +431,15 @@ simStats <- simFrame %>%
       FALSE
     )
   ) %>%
-  group_by(nObs) %>%
+  group_by(source, nObs) %>%
   summarize(
-    simMean = mean(meanCuft),
+    meanCuft = mean(meanCuft),
+    ci90MeanCuft = mean(ci90MeanCuft),
     propMatchCI = mean(meanInCI)
   )
-  
+```
+
+``` r
 ggplot(data = simFrame, aes(x = meanCuft)) +
   geom_histogram() +
   theme_bw() +
@@ -340,11 +448,128 @@ ggplot(data = simFrame, aes(x = meanCuft)) +
   geom_vline(xintercept = truth$meanCuft, color = "blue") +
   geom_vline(
     data = simStats,
-    aes(xintercept = simMean),
+    aes(xintercept = meanCuft),
     color = "red"
   )
 ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 ## Warning: Removed 8 rows containing missing values (geom_bar).
 ```
 
-![](/assets/images/2019-01-31-horvitz_thompson_simulate-1.png)
+![](/assets/images/2019-01-31-horvitz_thompson_simulationPlot1-1.png)
+
+``` r
+simFrame %>%
+  group_by(nObs) %>%
+  sample_n(20) %>%
+  mutate(sim = row_number()) %>%
+  ggplot(aes(x = meanCuft, y = sim)) +
+  geom_point(size = 2) +
+  geom_vline(
+    xintercept = truth$meanCuft, color = "blue"
+  ) +
+  geom_errorbarh(
+    aes(
+      xmin = meanCuft - ci90MeanCuft,
+      xmax = meanCuft + ci90MeanCuft
+    )
+  ) +
+  facet_wrap(~ nObs) +
+  xlim(0, max(simFrame$meanCuft) + max(simFrame$ci90MeanCuft)) +
+  theme_bw()
+```
+
+![](/assets/images/2019-01-31-horvitz_thompson_simulationPlot2-1.png)
+
+``` r
+outTable <- simStats %>%
+  bind_rows(truth %>% select(source, meanCuft)) %>%
+  rename(
+    "# sampled stands" = nObs,
+    "average sample cu. ft. per/ac" = meanCuft,
+    "90% CI" = ci90MeanCuft,
+    "proportion of CIs containing true mean" = propMatchCI
+  )
+pander::pander(
+  outTable,
+  missing = "-",
+  emphasize.strong.rows = which(outTable$source == "truth")
+)
+```
+
+<table style="width:99%;">
+<caption>Table continues below</caption>
+<colgroup>
+<col width="16%" />
+<col width="26%" />
+<col width="44%" />
+<col width="11%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="center">source</th>
+<th align="center"># sampled stands</th>
+<th align="center">average sample cu. ft. per/ac</th>
+<th align="center">90% CI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">estimate</td>
+<td align="center">10</td>
+<td align="center">2444</td>
+<td align="center">479.7</td>
+</tr>
+<tr class="even">
+<td align="center">estimate</td>
+<td align="center">20</td>
+<td align="center">2432</td>
+<td align="center">228.4</td>
+</tr>
+<tr class="odd">
+<td align="center">estimate</td>
+<td align="center">30</td>
+<td align="center">2483</td>
+<td align="center">147.3</td>
+</tr>
+<tr class="even">
+<td align="center">estimate</td>
+<td align="center">40</td>
+<td align="center">2480</td>
+<td align="center">104.8</td>
+</tr>
+<tr class="odd">
+<td align="center"><strong>truth</strong></td>
+<td align="center"><strong>-</strong></td>
+<td align="center"><strong>2403</strong></td>
+<td align="center"><strong>-</strong></td>
+</tr>
+</tbody>
+</table>
+
+<table style="width:42%;">
+<colgroup>
+<col width="41%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="center">proportion of CIs containing true mean</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">0.96</td>
+</tr>
+<tr class="even">
+<td align="center">0.89</td>
+</tr>
+<tr class="odd">
+<td align="center">0.65</td>
+</tr>
+<tr class="even">
+<td align="center">0.55</td>
+</tr>
+<tr class="odd">
+<td align="center"><strong>-</strong></td>
+</tr>
+</tbody>
+</table>
