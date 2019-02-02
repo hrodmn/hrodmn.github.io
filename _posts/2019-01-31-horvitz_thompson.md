@@ -36,16 +36,18 @@ stands <- tibble(id = 1:100) %>%
       n = 100, a = 1, b = 400,
       mean = 80, sd = 30
     ),
-    age = runif(n = 100, min = 10, max = 150),
+    age = truncnorm::rtruncnorm(
+      n = 100, a = 10, b = 150,
+      mean = 70, sd = 20
+    ),
     cv = runif(n = 100, min = 10, max = 100)
   ) %>%
   mutate(
-    cuftPerAc = 3000 * 1 / (1 + exp(-(age - 40) / 15)) +
-      rnorm(n = 100, mean = 0, sd = 400),
-    cuftPerAc = case_when(
-      cuftPerAc < 0 ~ 0,
-      cuftPerAc > 0 ~ cuftPerAc
-    ),
+    cuftPerAc = 3000 *
+      1 / (1 + exp(-(age - 40) / 15)) +
+      rnorm(n = 100, mean = 0, sd = 300),
+    # cuftPerAc = 50 * age +
+    #   rnorm(n = 100, mean = 0, sd = 600),
     cuftTot = cuftPerAc * acres
   )
 
@@ -67,7 +69,7 @@ stands %>%
   labs(caption = "volume over age for the forest")
 ```
 
-![](/assets/images/2019-01-31-horvitz_thompson_data-1.png) The true population mean stocking is 2403 cubic feet per acre, the population total is 1.849318610^{7} cubic feet!
+![](/assets/images/2019-01-31-horvitz_thompson_data-1.png) The true population mean stocking is 2364 cubic feet per acre, the population total is 1.956991610^{7} cubic feet!
 
 Designing a sample
 ------------------
@@ -84,15 +86,19 @@ The population of stands could be sampled randomly, but since we are trying to o
 
 Some texts will approximate *π*<sub>*i*</sub> like this:
 *π*<sub>*i*</sub> = *n* \* *p*<sub>*i*</sub>
- where *p*<sub>*i*</sub> is the sampling weight for the *i*<sup>*t**h*</sup> primary sample unit. This works fine when sampling with replacement, but sampling without replacement is slightly more complicated. The probability of including the *i*<sup>*t**h*</sup> element on the *k*<sup>*t**h*</sup> draw depends on the elements that were drawn in all draws 1 : *k*. The distinction between *p*<sub>*i*</sub> and *π*<sub>*i*</sub> is very important. Think of *π*<sub>*i*</sub> as the likelihood of including the *i*<sup>*t**h*</sup> element unconditional on the other elements selected in the sample. This can be calculated by computing the proportion of all possible samples where an element is selected but that sounds very difficult. Instead we will use the power of simulation to obtain an approximation of *π*<sub>*i*</sub> for each stand.
+ where *p*<sub>*i*</sub> is the sampling weight for the *i*th primary sample unit. This works fine when sampling with replacement, but sampling without replacement is slightly more complicated. The probability of including the *i*th element on the *k*th draw depends on the elements that were drawn in all draws 1 : *k*. The distinction between *p*<sub>*i*</sub> and *π*<sub>*i*</sub> is very important. Think of *π*<sub>*i*</sub> as the likelihood of including the *i*th element unconditional on the other elements selected in the sample. This can be calculated by computing the proportion of all possible samples where an element is selected but that sounds very difficult. Instead we will use the power of simulation to obtain an approximation of *π*<sub>*i*</sub> for each stand.
 
 ``` r
+
+stands$prop <- sqrt(stands$cuftPerAc) *
+  stands$acres /
+  sum(sqrt(stands$cuftPerAc) * stands$acres)
+
 simulate_sample <- function(sims, stands, nSamp) {
   bind_rows(
     lapply(1:sims,
       function(i, ...) {
         stands %>%
-          mutate(prop = age * acres / sum(age * acres)) %>%
           sample_n(nSamp, weight = prop) %>%
           mutate(try = i)
       }
@@ -101,14 +107,13 @@ simulate_sample <- function(sims, stands, nSamp) {
     summarize(pi_i_sim = n() / sims) %>%
     left_join(stands, by = "id") %>%
     mutate(
-      prop = age * acres / sum(age * acres),
       pi_i_approx = nSamp * prop
     ) %>%
     select(id, pi_i_sim, pi_i_approx, prop)
 }
 
 sampleSim20 <- simulate_sample(
-  sims = 1000,
+  sims = 10000,
   stands = stands,
   nSamp = 20
 )
@@ -118,11 +123,29 @@ sampleSim20 %>%
   geom_point() +
   geom_abline() +
   theme_bw() +
+  xlim(0, 1.1 * max(sampleSim20$pi_i_approx)) +
+  ylim(0, 1.1 * max(sampleSim20$pi_i_sim)) +
   xlab(bquote("approximate" ~ pi[i])) +
   ylab(bquote("simulated" ~ pi[i]))
 ```
 
 ![](/assets/images/2019-01-31-horvitz_thompson_sampleSimulation-1.png)
+
+``` r
+  
+sampleSim20 %>%
+  left_join(stands) %>%
+  ggplot(
+    aes(
+      x = acres,
+      y = cuftPerAc,
+      color = pi_i_sim)
+    ) +
+  geom_point()
+## Joining, by = c("id", "prop")
+```
+
+![](/assets/images/2019-01-31-horvitz_thompson_sampleSimulation-2.png)
 
 As you can see, there are subtle differences between the approximate *p**i*<sub>*i*</sub> values and the *p**i*<sub>*i*</sub> values generated from 10,000 simulated samples. We will use the simulated values for the rest of the analysis.
 
@@ -132,11 +155,19 @@ For this sample we are going to weight our sample on `age * acres` since we beli
 acresPerPlot <- 8
 
 sampStands <- stands %>%
-  mutate(prop = age * acres / sum(age * acres)) %>%
   sample_n(size = 20, weight = prop) %>%
   group_by(id) %>%
-  mutate(nPlots = max(2, min(ceiling(acres / acresPerPlot), 30))) %>%
-  left_join(sampleSim20 %>% select(id, pi_i = pi_i_sim), by = "id")
+  mutate(
+    nPlots = max(
+      2,
+      min(ceiling(acres / acresPerPlot), 30)
+    )
+  ) %>%
+  left_join(
+    sampleSim20 %>%
+      select(id, pi_i = pi_i_sim),
+    by = "id"
+  )
   
 stands %>%
   mutate(
@@ -145,7 +176,9 @@ stands %>%
       ! id %in% sampStands$id ~ "no"
     )
   ) %>%
-  ggplot(aes(x = acres, y = cuftPerAc, color = sampled)) +
+  ggplot(
+    aes(x = acres, y = cuftPerAc, color = sampled)
+  ) +
   geom_point()
 ```
 
@@ -161,8 +194,8 @@ plotTab <- sampStands %>%
   mutate(
     cuftObs = list(
       truncnorm::rtruncnorm(
-        a = 0,
-        b = Inf,
+        a = 0, # biological minimum
+        b = 6000, # biological maximum
         n = nPlots,
         mean = cuftPerAc,
         sd = (cv / 100) * cuftPerAc
@@ -185,12 +218,15 @@ We can start by summarizing the stand-level estimates. For each stand we will es
 
 ``` r
 standDat <- plotTab %>%
-  left_join(sampStands %>% select(id, acres), by = "id") %>%
+  left_join(
+    sampStands %>% select(id, acres),
+    by = "id"
+  ) %>%
   group_by(id, acres) %>%
   summarize(
     meanObs = mean(cuftObs),
     tHat = mean(cuftObs * acres),
-    varTHat = var(cuftObs * acres),
+    varTHat = var(cuftObs * acres) / n(),
     sdObs = sd(cuftObs),
     nPlots = n()
   )
@@ -233,10 +269,12 @@ sub_var <- function(row, data, y, pi_i, p) {
   for (l in 1:nrow(b)) {
     c <- b[l, ]
 
-    jointProb <- a[[pi_i]] + c[[pi_i]] - (1 - (1 - a[[p]] - c[[p]])^n)
-    
-    x[[l]] <- ((jointProb - a[[pi_i]] * c[[pi_i]]) / jointProb) *
-      (a[[y]] / a[[pi_i]] * c[[pi_i]])
+    jp <- a[[pi_i]] + c[[pi_i]] -
+      (1 - (1 - a[[p]] - c[[p]])^n)
+
+    x[[l]] <- ((jp - a[[pi_i]] * c[[pi_i]]) /
+      a[[pi_i]] * c[[pi_i]]) *
+      a[[y]] * c[[y]] / jp
   }
 
   sum(unlist(x))
@@ -246,8 +284,13 @@ sub_var <- function(row, data, y, pi_i, p) {
 Using the equations listed above we will compute estimates of the population total and variance of the total, then convert those into estimates of cubic foot volume on a per-acre basis.
 
 ``` r
+
 sampleSummary <- standDat %>%
-  left_join(sampStands %>% select(id, pi_i, prop), by = "id") %>%
+  left_join(
+    sampStands %>%
+      select(id, pi_i, prop),
+    by = "id"
+  ) %>%
   ungroup() %>%
   mutate(
     subVar = unlist(
@@ -264,13 +307,19 @@ sampleSummary <- standDat %>%
   ungroup() %>%
   summarize(
     totalCuft = sum(tHat / pi_i),
-    varTot = sum(((1 - pi_i) / pi_i^2) * tHat^2) +
-      sum(subVar) + sum(varTHat / pi_i),
+    fpc = 1 - n() / nrow(stands),
+    varTot = fpc * (
+      sum(((1 - pi_i) / pi_i^2) * tHat^2) +
+        sum(subVar) + sum(varTHat / pi_i)
+      ),
     nObs = n()
   ) %>%
   mutate(
     seTot = sqrt(varTot / nObs),
-    ci90Tot = qt(1 - 0.1 / 2, df = nObs - 1) * seTot,
+    ci90Tot = qt(
+      1 - 0.1 / 2,
+      df = nObs - 1
+      ) * seTot,
     meanCuft = totalCuft / totalAcres,
     seMeanCuft = seTot / totalAcres,
     ci90MeanCuft = ci90Tot / totalAcres,
@@ -278,7 +327,8 @@ sampleSummary <- standDat %>%
   ) %>%
   select(
     source, totalCuft, seTot, ci90Tot,
-    meanCuft, seMeanCuft, ci90MeanCuft, nObs
+    meanCuft, seMeanCuft, ci90MeanCuft,
+    nObs
   )
 
 results <- bind_rows(sampleSummary, truth)
@@ -293,9 +343,12 @@ results %>%
   ggplot(aes(x = source, y = meanCuft)) +
   geom_point() +
   geom_errorbar(
-    aes(ymax = meanCuft + ci90MeanCuft, ymin = meanCuft - ci90MeanCuft)
+    aes(
+      ymax = meanCuft + ci90MeanCuft,
+      ymin = meanCuft - ci90MeanCuft
+    )
   ) +
-  ylim(0, max(standDat$meanObs)) +
+  ylim(0, max(standDat$meanObs) * 1.5) +
   ylab(bquote("volume (" ~ ft^{3} ~ "/ac)"))
 ## Warning: Removed 1 rows containing missing values (geom_errorbar).
 ```
@@ -304,7 +357,8 @@ results %>%
 
 ``` r
 
-simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
+simulate_HT <- function(sims, stands, nStands,
+                        acresPerPlot) {
   
   sampleSim <- simulate_sample(
     sims = 10000,
@@ -317,19 +371,33 @@ simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
       1:sims,
       function(...) {
         sampStands <- stands %>%
-          mutate(
-            prop = age * acres / sum(age * acres)
+          sample_n(
+            size = nStands,
+            weight = prop,
+            replace = FALSE
           ) %>%
-          sample_n(nStands, weight = prop) %>%
-          left_join(sampleSim %>% select(id, pi_i = pi_i_sim), by = "id") %>%
-          mutate(nPlots = ceiling(acres / acresPerPlot))
+          group_by(id) %>%
+          mutate(
+            nPlots = max(
+              2,
+              min(ceiling(acres / acresPerPlot), 30)
+            )
+          ) %>%
+          left_join(
+            sampleSim %>%
+              select(id, pi_i = pi_i_sim),
+              by = "id"
+            ) %>%
+          ungroup()
 
-        # stage 2: generate a sample of plots for each stand
+        # stage 2: sample plots
         plotTab <- sampStands %>%
           group_by(id) %>%
           mutate(
             cuftObs = list(
-              rnorm(
+              truncnorm::rtruncnorm(
+                a = 0, # biological minimum
+                b = 6000, # biological maximum
                 n = nPlots,
                 mean = cuftPerAc,
                 sd = (cv / 100) * cuftPerAc
@@ -338,22 +406,29 @@ simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
           ) %>%
           select(id, cuftObs) %>%
           unnest() %>%
-          mutate(cuftObs = ifelse(cuftObs < 0, 0, cuftObs)) %>%
           ungroup()
 
         standDat <- plotTab %>%
-          left_join(sampStands %>% select(id, acres), by = "id") %>%
+          left_join(
+            sampStands %>%
+              select(id, acres),
+            by = "id"
+          ) %>%
           group_by(id, acres) %>%
           summarize(
             meanObs = mean(cuftObs),
             tHat = mean(cuftObs * acres),
-            varTHat = var(cuftObs * acres),
+            varTHat = mean(acres)^2 * var(cuftObs) / n(),
             sdObs = sd(cuftObs),
             nPlots = n()
           )
 
         sampleSummary <- standDat %>%
-          left_join(sampStands %>% select(id, pi_i, prop), by = "id") %>%
+          left_join(
+            sampStands %>%
+              select(id, pi_i, prop),
+            by = "id"
+          ) %>%
           ungroup() %>%
           mutate(
             subVar = unlist(
@@ -370,13 +445,19 @@ simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
           ungroup() %>%
           summarize(
             totalCuft = sum(tHat / pi_i),
-            varTot = sum(((1 - pi_i) / pi_i^2) * tHat^2) +
-              sum(subVar) + sum(varTHat / pi_i),
+            fpc = 1 - n() / nrow(stands),
+            varTot = fpc * (
+              sum(((1 - pi_i) / pi_i^2) * tHat^2) +
+                sum(subVar) + sum(varTHat / pi_i)
+              ),
             nObs = n()
           ) %>%
           mutate(
             seTot = sqrt(varTot / nObs),
-            ci90Tot = 1.96 * seTot,
+            ci90Tot = qt(
+              1 - 0.1 / 2,
+              df = nObs - 1
+              ) * seTot,
             meanCuft = totalCuft / totalAcres,
             seMeanCuft = seTot / totalAcres,
             ci90MeanCuft = ci90Tot / totalAcres,
@@ -384,8 +465,10 @@ simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
           ) %>%
           select(
             source, totalCuft, seTot, ci90Tot,
-            meanCuft, seMeanCuft, ci90MeanCuft, nObs
+            meanCuft, seMeanCuft, ci90MeanCuft,
+            nObs
           )
+        sampleSummary
       }
     )
   )
@@ -393,40 +476,21 @@ simulate_HT <- function(sims, stands, nStands, acresPerPlot) {
   out
 }
 
-sim10 <- simulate_HT(
-  sims = 100,
-  stands = stands,
-  nStands = 10,
-  acresPerPlot = acresPerPlot
+simFrame <- bind_rows(
+  map(
+    .x = c(10, 20, 30, 40, 50, 60),
+    .f = simulate_HT,
+    stands = stands,
+    sims = 100,
+    acresPerPlot = acresPerPlot
+  )
 )
-
-sim20 <- simulate_HT(
-  sims = 100,
-  stands = stands,
-  nStands = 20,
-  acresPerPlot = acresPerPlot
-)
-
-sim30 <- simulate_HT(
-  sims = 100,
-  stands = stands,
-  nStands = 30,
-  acresPerPlot = acresPerPlot
-)
-
-sim40 <- simulate_HT(
-  sims = 100,
-  stands = stands,
-  nStands = 40,
-  acresPerPlot = acresPerPlot
-)
-
-simFrame <- bind_rows(sim10, sim20, sim30, sim40)
 
 simStats <- simFrame %>%
   mutate(
     meanInCI = ifelse(
-      truth$meanCuft <= meanCuft + ci90MeanCuft & truth$meanCuft >= meanCuft - ci90MeanCuft,
+      truth$meanCuft <= meanCuft + ci90MeanCuft &
+        truth$meanCuft >= meanCuft - ci90MeanCuft,
       TRUE,
       FALSE
     )
@@ -445,14 +509,17 @@ ggplot(data = simFrame, aes(x = meanCuft)) +
   theme_bw() +
   facet_wrap(~nObs) +
   xlim(0, max(simFrame$meanCuft)) +
-  geom_vline(xintercept = truth$meanCuft, color = "blue") +
+  geom_vline(
+    xintercept = truth$meanCuft,
+    color = "blue"
+  ) +
   geom_vline(
     data = simStats,
     aes(xintercept = meanCuft),
     color = "red"
   )
 ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-## Warning: Removed 8 rows containing missing values (geom_bar).
+## Warning: Removed 12 rows containing missing values (geom_bar).
 ```
 
 ![](/assets/images/2019-01-31-horvitz_thompson_simulationPlot1-1.png)
@@ -460,21 +527,27 @@ ggplot(data = simFrame, aes(x = meanCuft)) +
 ``` r
 simFrame %>%
   group_by(nObs) %>%
-  sample_n(20) %>%
+  # sample_n(20) %>%
   mutate(sim = row_number()) %>%
   ggplot(aes(x = meanCuft, y = sim)) +
-  geom_point(size = 2) +
-  geom_vline(
-    xintercept = truth$meanCuft, color = "blue"
-  ) +
   geom_errorbarh(
     aes(
       xmin = meanCuft - ci90MeanCuft,
       xmax = meanCuft + ci90MeanCuft
-    )
+    ),
+    alpha = 0.8,
+    color = "orange"
+  ) +
+  geom_point(size = 1, alpha = 0.8) +
+  geom_vline(
+    xintercept = truth$meanCuft, color = "green"
   ) +
   facet_wrap(~ nObs) +
-  xlim(0, max(simFrame$meanCuft) + max(simFrame$ci90MeanCuft)) +
+  xlim(
+    0,
+    max(simFrame$meanCuft) +
+      max(simFrame$ci90MeanCuft)
+  ) +
   theme_bw()
 ```
 
@@ -496,13 +569,13 @@ pander::pander(
 )
 ```
 
-<table style="width:99%;">
-<caption>Table continues below</caption>
+<table style="width:74%;">
 <colgroup>
 <col width="16%" />
-<col width="26%" />
-<col width="44%" />
+<col width="13%" />
+<col width="15%" />
 <col width="11%" />
+<col width="16%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -510,65 +583,57 @@ pander::pander(
 <th align="center"># sampled stands</th>
 <th align="center">average sample cu. ft. per/ac</th>
 <th align="center">90% CI</th>
+<th align="center">proportion of CIs containing true mean</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td align="center">estimate</td>
 <td align="center">10</td>
-<td align="center">2444</td>
-<td align="center">479.7</td>
+<td align="center">2429</td>
+<td align="center">414.8</td>
+<td align="center">0.99</td>
 </tr>
 <tr class="even">
 <td align="center">estimate</td>
 <td align="center">20</td>
-<td align="center">2432</td>
-<td align="center">228.4</td>
+<td align="center">2428</td>
+<td align="center">208.5</td>
+<td align="center">0.94</td>
 </tr>
 <tr class="odd">
 <td align="center">estimate</td>
 <td align="center">30</td>
-<td align="center">2483</td>
-<td align="center">147.3</td>
+<td align="center">2445</td>
+<td align="center">164.1</td>
+<td align="center">0.84</td>
 </tr>
 <tr class="even">
 <td align="center">estimate</td>
 <td align="center">40</td>
-<td align="center">2480</td>
-<td align="center">104.8</td>
+<td align="center">2452</td>
+<td align="center">144.4</td>
+<td align="center">0.8</td>
+</tr>
+<tr class="odd">
+<td align="center">estimate</td>
+<td align="center">50</td>
+<td align="center">2433</td>
+<td align="center">127.7</td>
+<td align="center">0.82</td>
+</tr>
+<tr class="even">
+<td align="center">estimate</td>
+<td align="center">60</td>
+<td align="center">2435</td>
+<td align="center">110.5</td>
+<td align="center">0.75</td>
 </tr>
 <tr class="odd">
 <td align="center"><strong>truth</strong></td>
 <td align="center"><strong>-</strong></td>
-<td align="center"><strong>2403</strong></td>
+<td align="center"><strong>2364</strong></td>
 <td align="center"><strong>-</strong></td>
-</tr>
-</tbody>
-</table>
-
-<table style="width:42%;">
-<colgroup>
-<col width="41%" />
-</colgroup>
-<thead>
-<tr class="header">
-<th align="center">proportion of CIs containing true mean</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td align="center">0.96</td>
-</tr>
-<tr class="even">
-<td align="center">0.89</td>
-</tr>
-<tr class="odd">
-<td align="center">0.65</td>
-</tr>
-<tr class="even">
-<td align="center">0.55</td>
-</tr>
-<tr class="odd">
 <td align="center"><strong>-</strong></td>
 </tr>
 </tbody>
