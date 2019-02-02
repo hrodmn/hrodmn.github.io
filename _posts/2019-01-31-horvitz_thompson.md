@@ -69,7 +69,7 @@ stands %>%
   labs(caption = "volume over age for the forest")
 ```
 
-![](/assets/images/2019-01-31-horvitz_thompson_data-1.png) The true population mean stocking is 2364 cubic feet per acre, the population total is 1.956991610^{7} cubic feet!
+![](/assets/images/2019-01-31-horvitz_thompson_data-1.png) The true population mean stocking is 2562 cubic feet per acre, the population total is 2.118839510^{7} cubic feet!
 
 Designing a sample
 ------------------
@@ -85,8 +85,10 @@ The population of stands could be sampled randomly, but since we are trying to o
 #### Inclusion probability
 
 Some texts will approximate *π*<sub>*i*</sub> like this:
+
 *π*<sub>*i*</sub> = *n* \* *p*<sub>*i*</sub>
- where *p*<sub>*i*</sub> is the sampling weight for the *i*th primary sample unit. This works fine when sampling with replacement, but sampling without replacement is slightly more complicated. The probability of including the *i*th element on the *k*th draw depends on the elements that were drawn in all draws 1 : *k*. The distinction between *p*<sub>*i*</sub> and *π*<sub>*i*</sub> is very important. Think of *π*<sub>*i*</sub> as the likelihood of including the *i*th element unconditional on the other elements selected in the sample. This can be calculated by computing the proportion of all possible samples where an element is selected but that sounds very difficult. Instead we will use the power of simulation to obtain an approximation of *π*<sub>*i*</sub> for each stand.
+
+where *p*<sub>*i*</sub> is the sampling weight for the *i*th primary sample unit. This works fine when sampling with replacement, but sampling without replacement is slightly more complicated. The probability of including the *i*th element on the *k*th draw depends on the elements that were drawn in all draws 1 : *k*. The distinction between *p*<sub>*i*</sub> and *π*<sub>*i*</sub> is very important. Think of *π*<sub>*i*</sub> as the likelihood of including the *i*th element unconditional on the other elements selected in the sample. This can be calculated by computing the proportion of all possible samples where an element is selected but that sounds very difficult. Instead we will use the power of simulation to obtain an approximation of *π*<sub>*i*</sub> for each stand.
 
 ``` r
 
@@ -245,6 +247,7 @@ $$
  where *S* is the sample of primary sample units from population sized *N*
 
 The estimator for variance of the population total is:
+
 $$
 \\hat{V}(\\hat{t}\_{HT}) = \\sum\_{i \\in S} (1 - \\pi\_{i}) \\displaystyle \\frac{\\hat{t\_{i}}^{2}}{\\pi\_{i}^{2}}+
 \\sum\_{i \\in S} \\sum\_{\\substack{k \\in S \\\\ k \\neq i}} \\displaystyle \\frac{\\pi\_{ik} - \\pi\_{i}\\pi\_{k}}{\\pi\_{ik}}
@@ -253,6 +256,7 @@ $$
 $$
 
 where *π*<sub>*i**k*</sub> is the joint inclusion probability for primary sampling units *i* and *k*. *π*<sub>*i**k*</sub> is approximated using this equation:
+
 *π*<sub>*i*</sub> + *π*<sub>*k*</sub> − (1 − (1 − *p*<sub>*i*</sub> − *p*<sub>*k*</sub>)<sup>*n*</sup>)
 
 We will extend the estimate of population variance ($\\hat{V}(\\hat{t}\_{HT})$) to obtain a standard error and 90% confidence interval for the population.
@@ -590,49 +594,49 @@ pander::pander(
 <tr class="odd">
 <td align="center">estimate</td>
 <td align="center">10</td>
-<td align="center">2429</td>
-<td align="center">414.8</td>
+<td align="center">2629</td>
+<td align="center">448.2</td>
 <td align="center">0.99</td>
 </tr>
 <tr class="even">
 <td align="center">estimate</td>
 <td align="center">20</td>
-<td align="center">2428</td>
-<td align="center">208.5</td>
+<td align="center">2629</td>
+<td align="center">223.8</td>
 <td align="center">0.94</td>
 </tr>
 <tr class="odd">
 <td align="center">estimate</td>
 <td align="center">30</td>
-<td align="center">2445</td>
-<td align="center">164.1</td>
-<td align="center">0.84</td>
+<td align="center">2636</td>
+<td align="center">174.9</td>
+<td align="center">0.92</td>
 </tr>
 <tr class="even">
 <td align="center">estimate</td>
 <td align="center">40</td>
-<td align="center">2452</td>
-<td align="center">144.4</td>
-<td align="center">0.8</td>
+<td align="center">2624</td>
+<td align="center">153.9</td>
+<td align="center">0.97</td>
 </tr>
 <tr class="odd">
 <td align="center">estimate</td>
 <td align="center">50</td>
-<td align="center">2433</td>
-<td align="center">127.7</td>
-<td align="center">0.82</td>
+<td align="center">2636</td>
+<td align="center">138.2</td>
+<td align="center">0.89</td>
 </tr>
 <tr class="even">
 <td align="center">estimate</td>
 <td align="center">60</td>
-<td align="center">2435</td>
-<td align="center">110.5</td>
-<td align="center">0.75</td>
+<td align="center">2618</td>
+<td align="center">120</td>
+<td align="center">0.87</td>
 </tr>
 <tr class="odd">
 <td align="center"><strong>truth</strong></td>
 <td align="center"><strong>-</strong></td>
-<td align="center"><strong>2364</strong></td>
+<td align="center"><strong>2562</strong></td>
 <td align="center"><strong>-</strong></td>
 <td align="center"><strong>-</strong></td>
 </tr>
